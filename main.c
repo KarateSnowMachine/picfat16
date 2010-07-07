@@ -125,7 +125,7 @@ void main()
 		if (bytes_received >= 512)
 		{
 
-			retval  = SD_write_sector(0x00, addr, rx_write);
+			retval  = SD_write_sector(addr, rx_write);
 			if (retval != 0)
 				goto bad;
 			bytes_received-=512;

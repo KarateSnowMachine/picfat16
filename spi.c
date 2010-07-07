@@ -143,7 +143,46 @@ void SD_init(void)
 	SSP2CON1bits.SSPM = 1;
 	WriteSPIM(0xFF);
 }
+void SD_read_sector(SD_addr addr, char *buf)
+{
+	BYTE x;
+	int d; 
+	light_off(); 
 
+	SD_CS = 0; 
+	
+
+	WriteSPIM(0xFF); 
+	WriteSPIM(0x51); 
+	WriteSPIM(addr.addr3); 
+	WriteSPIM(addr.addr2); 
+	WriteSPIM(addr.addr1); 
+	WriteSPIM(0x00);
+	WriteSPIM(0xFF);
+	// wait for command response 
+	do 
+	{
+	 	x = read_spi_byte();
+	}
+	while ((x & 0x80) != 0);
+
+	// read data token
+	x = read_spi_byte(); 
+	if (x != 0xFE) 
+	{
+		return; 
+	}
+	for (d=0; d<512; ++d)
+	{
+		buf[d] = read_spi_byte();
+	}
+	// 2 CRC tokens
+	read_spi_byte();
+	read_spi_byte();
+	SD_CS=1; 
+	return;
+	
+}
 char SD_write_sector(SD_addr addr, char *buf)
 {
 	BYTE x,r;
@@ -168,7 +207,7 @@ char SD_write_sector(SD_addr addr, char *buf)
 		{	
 			light_off()	 
 			return x;
-		}
+		} 
 		
 
 		// data token
