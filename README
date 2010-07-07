@@ -4,4 +4,4 @@ The GPS module outputs sentences via a serial port which is then read by the PIC
 
 Though this is somewhat hardware specific, my PIC is not powerful enough to run the stock microchip firmware that has FAT support. Therefore, I've decided to try to write a stripped down FAT16 driver which will log GPS sentences to separate files. 
 
-Chances are no one will ever even see this, but perhaps someone will. 
+Chances are no one will ever even see this, but perhaps someone will, for whatever reason, find this useful. 
