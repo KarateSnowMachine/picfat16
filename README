@@ -1,0 +1,7 @@
+One of my projects has been to build a GPS data logger around a PIC 18f24J50. 
+
+The GPS module outputs sentences via a serial port which is then read by the PIC, buffered, and then written to an SD card via an SPI port. 
+
+Though this is somewhat hardware specific, my PIC is not powerful enough to run the stock microchip firmware that has FAT support. Therefore, I've decided to try to write a stripped down FAT16 driver which will log GPS sentences to separate files. 
+
+Chances are no one will ever even see this, but perhaps someone will. 
