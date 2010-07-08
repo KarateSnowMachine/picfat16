@@ -2,6 +2,9 @@
 #define _SPI_H_
 
 #include "p18f24j50.h"
+#define ERROR() while (1) { light_toggle(); Delayms(); Delayms(); }
+typedef unsigned char BYTE; 
+typedef unsigned short WORD;
 		#define INPUT 1;
 		#define OUTPUT 0;
 
@@ -69,7 +72,8 @@ typedef union {
 #endif
 
 void Delayms(void);
-void spi_write_test(void);
+void init_spi(void);
 void SD_init(void);
-char SD_write_sector(SD_addr addr, char *buf);
+char SD_write_sector(SD_addr addr, BYTE *buf);
+void SD_read_sector(SD_addr addr, BYTE *buf);
 

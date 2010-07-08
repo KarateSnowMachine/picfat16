@@ -1,9 +1,8 @@
 #include "spi.h"
 #include "light.h"
 
-#define BYTE char
 
-unsigned char WriteSPIM( unsigned char data_out )
+unsigned char WriteSPIM( BYTE data_out )
 {
     BYTE clear;
     clear = SPIBUF;
@@ -82,18 +81,23 @@ void SD_init(void)
 	Delayms();
 	Delayms();
 	Delayms();
-
+	
+	// set all the port mappings, GPIO pin settings
 	init_spi();
+	SSP2CON1bits.SSPM = 0;
+	// the preamble-esque sequence needs to have chip select off (CS is active low)
 	SD_CS=1;
 
 	Delayms();
 	// send 80 clock pulses
 	for(sentClocks=0; sentClocks<12; sentClocks++)
 	{
+		// Each bit sends is accompanied by 1 clock, 8 bits per iteration 
 		WriteSPIM(0xFF); // sets OUT high and strobes clock
 	}
 
-
+	//TODO: make a macro for command generation so it is clearer what is happening?
+	// SD commands are all prefixed with 01 followed by a 6 bit command, hence the 0x40 = 01_00|0000 
 // CMD0 = software reset
 	SD_CS=0;
 	WriteSPIM(0x40);
@@ -106,21 +110,25 @@ void SD_init(void)
 	{
 		x = read_spi_byte();
 	}	
+	// wait for a command response
 	while ((x & 0x80) != 0);
-
+/*
 	if (x != 0x01)
 	{
+		//error condition 
 		while (1) 
 		{
 			light_toggle();
 			Delayms();
+			Delayms();
+			Delayms();
 		}
 	}
-	
-
+*/	
 // CMD1 = init command	
 	while(1)
 	{
+		//cmd1 = 01_00|0001 = 0x41
 		WriteSPIM(0x41);
 		WriteSPIM(0x00); 
 		WriteSPIM(0x00); 
@@ -136,6 +144,7 @@ void SD_init(void)
 		while ((x & 0x80) != 0);
 	
 		if (x == 0x00) {
+			// init complete!
 			break;
 		}
 	}
@@ -143,15 +152,15 @@ void SD_init(void)
 	SSP2CON1bits.SSPM = 1;
 	WriteSPIM(0xFF);
 }
-void SD_read_sector(SD_addr addr, char *buf)
+void SD_read_sector(SD_addr addr, BYTE *buf)
 {
-	BYTE x;
+	BYTE cmd_response, data_token;
 	int d; 
 	light_off(); 
 
 	SD_CS = 0; 
 	
-
+	//cmd17 = read sector 01_01|0001 = 0x51
 	WriteSPIM(0xFF); 
 	WriteSPIM(0x51); 
 	WriteSPIM(addr.addr3); 
@@ -162,16 +171,18 @@ void SD_read_sector(SD_addr addr, char *buf)
 	// wait for command response 
 	do 
 	{
-	 	x = read_spi_byte();
+	 	cmd_response = read_spi_byte();
 	}
-	while ((x & 0x80) != 0);
+	while ((cmd_response & 0x80) != 0);
 
-	// read data token
-	x = read_spi_byte(); 
-	if (x != 0xFE) 
-	{
-		return; 
+	// TODO: check command response error condition here
+
+	// wait for data token
+	do {
+		data_token = read_spi_byte(); 
 	}
+	while(data_token != 0xFE);
+
 	for (d=0; d<512; ++d)
 	{
 		buf[d] = read_spi_byte();
@@ -180,16 +191,14 @@ void SD_read_sector(SD_addr addr, char *buf)
 	read_spi_byte();
 	read_spi_byte();
 	SD_CS=1; 
-	return;
-	
 }
-char SD_write_sector(SD_addr addr, char *buf)
+char SD_write_sector(SD_addr addr, BYTE *buf)
 {
 	BYTE x,r;
 	int d;
 	light_off();
 	SD_CS=0;
-// CD24 = write to sector 0
+	// CMD24 = write to sector, 01_01|1000 = 0x58
 		WriteSPIM(0xFF);
 		WriteSPIM(0x58);
 		WriteSPIM(addr.addr3); 
@@ -221,11 +230,24 @@ char SD_write_sector(SD_addr addr, char *buf)
 		// 2 crap CRC bytes
 		WriteSPIM(0xFF);
 		WriteSPIM(0xFF);
+
+		// after the CRC comes the data response packet
 		do 
 		{
 		 	x = read_spi_byte();
+			if (x & 0x01 != 0) {
+				r = ((x & 0x1F)>> 1);
+				// r= status code
+				if (r==0x02)
+				{
+					light_on();
+					break;
+				} else {
+					ERROR();
+				}
+			}
 		}
-		while (((x & 0x1F)>> 1) != 0x02); // last byte is always 1 in this response packet, we are looking for the last byte = 0101
+		while (1); // last byte is always 1 in this response packet, we are looking for the last byte = 0101
 
 		//read until non zero
 		do 
@@ -249,5 +271,4 @@ char SD_write_sector(SD_addr addr, char *buf)
 */
 		light_on();
 		SD_CS=1;
-		return 0;
 }

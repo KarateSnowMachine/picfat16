@@ -1,8 +1,11 @@
 #include "p18f24j50.h"
 
 #pragma config WDTEN=OFF,CP0=OFF,OSC=HS,WPDIS=OFF,WPCFG=OFF,XINST=OFF,FCMEN=OFF,IOL1WAY=OFF//,CPUDIV=OSC2_PLL2
+
 #include "light.h"
 #include "spi.h"
+#include "fat16.h"
+
 	#pragma udata a
 	char rx_buffer1[256]; 
 	#pragma udata b
@@ -107,6 +110,21 @@ char get_uart_byte()
 typedef enum _packet_type {UNKNOWN, RMC, GGA} packet_type;
 
 #define wait_for_eol() 	while (get_uart_byte()!='\n');
+
+void main()
+{
+	init_light();
+	SD_init();
+	light_off();
+	SD_read_test();
+	while(1);	
+
+
+}
+
+
+// below is the "real main" 
+#if 0
 void main()
 {
 
@@ -198,7 +216,7 @@ void main()
 			RCSTA1bits.CREN=0;	//disable reception for now to avoid overrun errors
 			//write data to the SD card
 			addr.full_addr = sector_num<<9;
-			retval  = SD_write_sector(addr, rx_read-bytes_received);
+			retval  = SD_write_sector(addr, (BYTE *)(rx_read-bytes_received));
 			if (retval != 0)
 				goto bad;
 
@@ -248,5 +266,6 @@ good:
 
 
 
-}
+} // end main
+#endif 
 	
