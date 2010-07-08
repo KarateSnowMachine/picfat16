@@ -175,6 +175,7 @@ void SD_read_sector(SD_addr addr, BYTE *buf)
 	}
 	while ((cmd_response & 0x80) != 0);
 
+
 	// TODO: check command response error condition here
 
 	// wait for data token
@@ -235,17 +236,8 @@ char SD_write_sector(SD_addr addr, BYTE *buf)
 		do 
 		{
 		 	x = read_spi_byte();
-			if (x & 0x01 != 0) {
-				r = ((x & 0x1F)>> 1);
-				// r= status code
-				if (r==0x02)
-				{
-					light_on();
-					break;
-				} else {
-					ERROR();
-				}
-			}
+			if (((x & 0x1F)>> 1) ==0x02)
+				break;
 		}
 		while (1); // last byte is always 1 in this response packet, we are looking for the last byte = 0101
 
@@ -255,20 +247,7 @@ char SD_write_sector(SD_addr addr, BYTE *buf)
 			x = read_spi_byte();
 		}
 		while (x != 0);
-/*
-		WriteSPIM(0x4D);
-		WriteSPIM(0x00); 
-		WriteSPIM(0x00); 
-		WriteSPIM(0x00); 
-		WriteSPIM(0x00);
-		WriteSPIM(0xFF);
-			x = read_spi_byte();
-			if (x == 0xff);
-			x = read_spi_byte();
-			if (x == 0x00);
-			x = read_spi_byte();
-			if (x == 0x00);
-*/
+
 		light_on();
 		SD_CS=1;
 }

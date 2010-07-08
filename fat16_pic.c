@@ -11,13 +11,13 @@ dir_entry_t *dirs;
 
 
 /* these will get set by init_fat16 since they are the only important variables from the boot record */
-unsigned boot_offset;
-unsigned reserved_sectors;
-unsigned max_root_entries;
-unsigned sectors_per_fat;
-unsigned directory_table_offset; 
-unsigned fat_offset; 
-unsigned cluster_offset;
+WORD boot_offset;
+WORD reserved_sectors;
+WORD max_root_entries;
+WORD sectors_per_fat;
+WORD directory_table_offset; 
+WORD fat_offset; 
+WORD cluster_offset;
 
 /* these are temporary variable that are per-file */
 unsigned previous_cluster;
@@ -47,14 +47,16 @@ BYTE mbr_boot_directory_buf2[256];
 #define SECTOR_FOR_CLUSTER_DATA(c) (cluster_offset+(c-2)*32)
 #define SECTOR_FOR_CLUSTER(c) (fat_offset+(c/256))
 
-void write_sector(int sector, BYTE *buf)
+void write_sector(DWORD sector, BYTE *buf)
 {
-	SD_addr addr = sector;
+	SD_addr addr;
+	addr.full_addr = sector<<9;
 	SD_write_sector(addr, buf); 
 }
 
-void read_sector(int sector, BYTE *buf) {
-	SD_addr addr = sector;
+void read_sector(DWORD sector, BYTE *buf) {
+	SD_addr addr;
+	addr.full_addr = sector<<9;
 	SD_read_sector(addr, buf);
 }
 
@@ -104,6 +106,7 @@ unsigned find_free_cluster()
 void create_file(char *name, char *ext)
 {
 	unsigned free_cluster = find_free_cluster();
+	DWORD sector_for_free_cluster;
 	free_dir = find_free_directory_entry(&previous_dir_sector_offset, &previous_dir_entry_offset);
 	free_dir->filename[0]='G';
 	free_dir->filename[1]='P';
@@ -115,13 +118,23 @@ void create_file(char *name, char *ext)
 /*
 	snprintf(free_dir->filename, 9, "%s%d", name,previous_dir_entry_offset);
 	snprintf(free_dir->extension, 4, "%s", ext);
-*/
+ */
 	free_dir->attributes=0x20; //ARCHIVE
 	free_dir->cluster_start=free_cluster;
 	free_dir->size = 0;
 	fat_cluster_entries[free_cluster] = 0xffff;
 	write_sector(directory_table_offset + previous_dir_sector_offset, (BYTE *) dirs);
-	write_sector(SECTOR_FOR_CLUSTER(free_cluster), (BYTE *) fat_cluster_entries);
+	sector_for_free_cluster = SECTOR_FOR_CLUSTER(free_cluster);
+
+	Delayms();
+	Delayms();
+	Delayms();
+
+	write_sector(sector_for_free_cluster, (BYTE *) fat_cluster_entries);
+	Delayms();
+	Delayms();
+	Delayms();
+
 	previous_cluster = free_cluster;
 	num_sectors_used_in_cluster=0;
 }
@@ -129,10 +142,11 @@ void create_file(char *name, char *ext)
 void write_buf(BYTE *buf)
 {
 	unsigned int previous_sector_offset, sector_offset;
+	unsigned free_cluster;
 	// if we have written more than a cluster, allocate a new cluster and link it into the FAT
 	if (num_sectors_used_in_cluster == 32)
 	{
-		unsigned free_cluster = find_free_cluster();
+		free_cluster = find_free_cluster();
 		fat_cluster_entries[free_cluster] = 0xffff;
 		// this is the easy case where since the cluster is the same for both FAT entries, we can modify them in one shot
 		// and write back the whole sector 
@@ -156,6 +170,9 @@ void write_buf(BYTE *buf)
 	num_sectors_used_in_cluster++;
 	// update directory entry
 	dirs[previous_dir_entry_offset].size+=512;
+	Delayms();
+	Delayms();
+	Delayms();
 	write_sector(directory_table_offset + previous_dir_sector_offset, (BYTE *)dirs);
 }
 
@@ -165,34 +182,33 @@ void init_fat16()
 	boot_record_t *b;
 	BYTE *buf;
 	int i;
-	SD_addr addr;
 
 	/* init pointers */
 	buf = mbr_boot_directory_buf2;
-	addr.full_addr = 0;
-/*
+
 	fat_cluster_entries = (WORD *)fat_cluster_entries2;
 	dirs = (dir_entry_t *)mbr_boot_directory_buf2;
 
-
-*/
-
 	// read the MBR to figure out the "num_sector_skip" value which marks the beginning of partition 0
-	SD_read_sector(addr, mbr_boot_directory_buf2);
+	read_sector(0, mbr_boot_directory_buf2);
  	mbr = (MBR_t *) mbr_boot_directory_buf2;
 
 	//after this point, we can throw away the MBR since we don't really need any other fields from it and reuse the buffer to store the boot record
 	boot_offset = mbr->partition_table[0].num_sectors_skip;
 	
 	// read the first sector of the partition which is the boot record
-	read_sector(boot_offset, buf); 
+	read_sector(boot_offset, mbr_boot_directory_buf2); 
 	b = (boot_record_t *)mbr_boot_directory_buf2; 
 	if (b->signature != 0xaa55) {
-		while (1) {
-			light_toggle();
-		}
+		ERROR();
 	}
-
+ 	if (b->sectors_per_cluster != 32)
+	{
+		ERROR();
+	}
+	if (b->max_root_entries != 512) {
+		ERROR();
+	}
 	assert(b->max_root_entries == 512); 
 	assert(b->sectors_per_cluster == 32);
 
@@ -219,7 +235,8 @@ void init_fat16()
 void SD_read_test()
 {
 	init_fat16();
-//	create_file("A","GPS");
+	create_file("A","GPS");
+	write_buf(mbr_boot_directory_buf2);
 	light_on();
 	while(1);
 
