@@ -204,7 +204,7 @@ void main()
 			addr.full_addr = sector_num<<9;
 			retval  = SD_write_sector(addr, (BYTE *)(rx_read-bytes_received));
 #else
-			retval = write_buf(rx_buffer3);
+			retval = write_buf((BYTE *)(rx_read-bytes_received));
 #endif
 			if (retval != 0)
 				goto bad;
