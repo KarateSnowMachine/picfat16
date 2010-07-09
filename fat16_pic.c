@@ -97,8 +97,8 @@ unsigned find_free_cluster()
 		//TODO: clean this up
 		read_sector(fat_offset+sector_offset,(BYTE*)fat_cluster_entries);
 		for (current_cluster=0; current_cluster < 256; ++current_cluster) {
-			if (!fat_cluster_entries[current_cluster]) {
-				return current_cluster;
+			if (fat_cluster_entries[current_cluster] == 0) {
+				return sector_offset*256+current_cluster;
 			}
 		}
 	}
@@ -158,18 +158,18 @@ void write_buf(BYTE *buf)
 	if (num_sectors_used_in_cluster == 32)
 	{
 		free_cluster = find_free_cluster();
-		fat_cluster_entries[free_cluster] = 0xffff;
+		fat_cluster_entries[free_cluster%256] = 0xffff;
 		// this is the easy case where since the cluster is the same for both FAT entries, we can modify them in one shot
 		// and write back the whole sector 
 		previous_sector_offset = SECTOR_FOR_CLUSTER(previous_cluster);
 		sector_offset = SECTOR_FOR_CLUSTER(free_cluster);
 		if (sector_offset == previous_sector_offset) {
-			fat_cluster_entries[previous_cluster] = free_cluster; 
+			fat_cluster_entries[previous_cluster%256] = free_cluster; 
 			write_sector_delay(sector_offset, (BYTE*) fat_cluster_entries);
 		} else {
 			write_sector_delay(sector_offset, (BYTE*) fat_cluster_entries);
 			read_sector(previous_sector_offset, (BYTE*) fat_cluster_entries); 
-			fat_cluster_entries[previous_cluster] = free_cluster;
+			fat_cluster_entries[previous_cluster%256] = free_cluster;
 			write_sector_delay(previous_sector_offset, (BYTE*) fat_cluster_entries);
 		}
 		previous_cluster = free_cluster;
