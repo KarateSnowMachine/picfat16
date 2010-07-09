@@ -89,15 +89,16 @@ dir_entry_t *find_free_directory_entry(long *sector_offset, unsigned *entry_offs
 		return NULL;
 	}
 }
-unsigned find_free_cluster()
+WORD find_free_cluster()
 {
-	int current_cluster=0;
+	int current_cluster;
 	int sector_offset;
+	//scan the file allocation table sector by sector
 	for (sector_offset=0; sector_offset<sectors_per_fat; sector_offset++) {
 		//TODO: clean this up
 		read_sector(fat_offset+sector_offset,(BYTE*)fat_cluster_entries);
 		for (current_cluster=0; current_cluster < 256; ++current_cluster) {
-			if (!fat_cluster_entries[current_cluster]) {
+			if (fat_cluster_entries[current_cluster] == 0) {
 				return current_cluster;
 			}
 		}
@@ -141,10 +142,10 @@ void create_file(char *name, char *ext)
 	free_dir->cluster_start=free_cluster;
 	free_dir->size = 0;
 	fat_cluster_entries[free_cluster] = 0xffff;
-	write_sector_delay(directory_table_offset + previous_dir_sector_offset, (BYTE *) dirs);
+	write_sector(directory_table_offset + previous_dir_sector_offset, (BYTE *) dirs);
 	sector_for_free_cluster = SECTOR_FOR_CLUSTER(free_cluster);
 
-	write_sector_delay(sector_for_free_cluster, (BYTE *) fat_cluster_entries);
+	write_sector(sector_for_free_cluster, (BYTE *) fat_cluster_entries);
 
 	previous_cluster = free_cluster;
 	num_sectors_used_in_cluster=0;
@@ -153,36 +154,44 @@ void create_file(char *name, char *ext)
 void write_buf(BYTE *buf)
 {
 	unsigned int previous_sector_offset, sector_offset;
-	unsigned free_cluster;
+	WORD free_cluster;
 	// if we have written more than a cluster's worth of sectors, allocate a new cluster and link it into the FAT
 	if (num_sectors_used_in_cluster == 32)
 	{
-		free_cluster = find_free_cluster();
+		if ((free_cluster = find_free_cluster()) == 0)
+		{
+			ERROR();
+		}
+		// after find_free_cluster(), the sector that contains the free cluster's FAT entry is in the buffer
+
 		fat_cluster_entries[free_cluster] = 0xffff;
-		// this is the easy case where since the cluster is the same for both FAT entries, we can modify them in one shot
-		// and write back the whole sector 
 		previous_sector_offset = SECTOR_FOR_CLUSTER(previous_cluster);
 		sector_offset = SECTOR_FOR_CLUSTER(free_cluster);
+
+		// this is the easy case where since the cluster is the same for both FAT entries, we can modify them in one shot and write back the whole sector 
 		if (sector_offset == previous_sector_offset) {
 			fat_cluster_entries[previous_cluster] = free_cluster; 
-			write_sector_delay(sector_offset, (BYTE*) fat_cluster_entries);
+			write_sector(sector_offset, (BYTE*) fat_cluster_entries);
 		} else {
-			write_sector_delay(sector_offset, (BYTE*) fat_cluster_entries);
+			/* this is the tricky case where the currently loaded sector is "sector_offset" (new cluster), so we write that back first with the modified free_cluster entry, and then 
+				read the previous sector, update the previous_cluster's value, and write back that sector
+					*/
+			write_sector(sector_offset, (BYTE*) fat_cluster_entries);
 			read_sector(previous_sector_offset, (BYTE*) fat_cluster_entries); 
 			fat_cluster_entries[previous_cluster] = free_cluster;
-			write_sector_delay(previous_sector_offset, (BYTE*) fat_cluster_entries);
+			write_sector(previous_sector_offset, (BYTE*) fat_cluster_entries);
 		}
 		previous_cluster = free_cluster;
 		num_sectors_used_in_cluster=0;
 	}
 
 	// update data in the cluster (by adding a new sector to it)
-	write_sector_delay(SECTOR_FOR_CLUSTER_DATA(previous_cluster)+num_sectors_used_in_cluster, buf);
+	write_sector(SECTOR_FOR_CLUSTER_DATA(previous_cluster)+num_sectors_used_in_cluster, buf);
 	num_sectors_used_in_cluster++;
 
 	// update directory entry
 	dirs[previous_dir_entry_offset].size+=512;
-	write_sector_delay(directory_table_offset + previous_dir_sector_offset, (BYTE *)dirs);
+	write_sector(directory_table_offset + previous_dir_sector_offset, (BYTE *)dirs);
 }
 
 void init_fat16()

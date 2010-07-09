@@ -6,7 +6,7 @@
 
 FILE *image;
 dir_entry_t dirs[512/sizeof(dir_entry_t)];
-word fat_cluster_entries[256];
+WORD fat_cluster_entries[256];
 unsigned previous_dir_entry_offset;
 
 /* these will get set by init_fat16 since they are the only important variables from the boot record */
@@ -28,22 +28,23 @@ long previous_dir_sector_offset;
 #define SECTOR_FOR_CLUSTER(c) (fat_offset+(c/256))
 #define SECTOR2BYTE(x) (x<<9)
 
-void read_sector(int sector_number, byte *buf)
+void read_sector(int sector_number, BYTE *buf)
 {
 	fseek(image, SECTOR2BYTE(sector_number), SEEK_SET);
-	fread(buf, sizeof(byte), 512, image);
+	fread(buf, sizeof(BYTE), 512, image);
 }
 
-void write_sector(int sector, byte *buf) {
+void write_sector(int sector, BYTE *buf) {
 	fseek(image, SECTOR2BYTE(sector), SEEK_SET);
-	fwrite(buf, sizeof(byte), 512, image);
+	fwrite(buf, sizeof(BYTE), 512, image);
 }
 
-dword get_next_cluster( int cluster_num)
+DWORD get_next_cluster( int cluster_num)
 {
-	word buf[256];
-	printf("Accessing cluster %d ... boot_offset=%u, (%u sectors in FAT)\n", cluster_num, boot_offset, sectors_per_fat); 
-	read_sector(SECTOR_FOR_CLUSTER(cluster_num), (byte *)buf); 
+	WORD buf[256];
+	read_sector(SECTOR_FOR_CLUSTER(cluster_num), (BYTE *)buf); 
+	printf("Accessing cluster %d ... value=%d (0x%x) \n", cluster_num, buf[cluster_num%256], buf[cluster_num%256]); 
+
 	//	printf("\tFound cluster %x \n", buf[cluster_num%256]);
 	return buf[cluster_num%256];
 }
@@ -53,7 +54,7 @@ dir_entry_t *find_free_directory_entry(long *sector_offset, unsigned *entry_offs
 	// read the directory table one sector at a time 
 	//TODO: fix up the hardcoding
 	for (int sector=0; sector < 32; ++sector) {
-		read_sector(directory_table_offset + sector, (byte *)dirs);
+		read_sector(directory_table_offset + sector, (BYTE *)dirs);
 		for (int i=0; i<max_root_entries/32; i++) {
 			unsigned char first_byte = dirs[i].filename[0];
 			if (first_byte == 0x00 || first_byte == 0xe5 || first_byte == 0x05)
@@ -73,7 +74,7 @@ unsigned find_free_cluster()
 	int current_cluster=0;
 	for (int sector_offset=0; sector_offset<sectors_per_fat; sector_offset++) {
 		//TODO: clean this up
-		read_sector(fat_offset+sector_offset,(byte*)fat_cluster_entries);
+		read_sector(fat_offset+sector_offset,(BYTE*)fat_cluster_entries);
 		for (current_cluster=0; current_cluster < 256; ++current_cluster) {
 			if (!fat_cluster_entries[current_cluster]) {
 				printf("Found free cluster %d\n",current_cluster);
@@ -95,13 +96,13 @@ void create_file(char *name, char *ext)
 	free_dir->cluster_start=free_cluster;
 	free_dir->size = 0;
 	fat_cluster_entries[free_cluster] = 0xffff;
-	write_sector(directory_table_offset + previous_dir_sector_offset, (byte *) dirs);
-	write_sector(SECTOR_FOR_CLUSTER(free_cluster), (byte *) fat_cluster_entries);
+	write_sector(directory_table_offset + previous_dir_sector_offset, (BYTE *) dirs);
+	write_sector(SECTOR_FOR_CLUSTER(free_cluster), (BYTE *) fat_cluster_entries);
 	previous_cluster = free_cluster;
 	num_sectors_used_in_cluster=0;
 }
 
-void write_buf(byte *buf)
+void write_buf(BYTE *buf)
 {
 	// if we have written more than a cluster, allocate a new cluster and link it into the FAT
 	if (num_sectors_used_in_cluster == 32)
@@ -115,13 +116,13 @@ void write_buf(byte *buf)
 		if (sector_offset == previous_sector_offset) {
 			printf("easy case");
 			fat_cluster_entries[previous_cluster] = free_cluster; 
-			write_sector(sector_offset, (byte*) fat_cluster_entries);
+			write_sector(sector_offset, (BYTE*) fat_cluster_entries);
 		} else {
 			printf("hard case");
-			write_sector(sector_offset, (byte*) fat_cluster_entries);
-			read_sector(previous_sector_offset, (byte*) fat_cluster_entries); 
+			write_sector(sector_offset, (BYTE*) fat_cluster_entries);
+			read_sector(previous_sector_offset, (BYTE*) fat_cluster_entries); 
 			fat_cluster_entries[previous_cluster] = free_cluster;
-			write_sector(previous_sector_offset, (byte*) fat_cluster_entries);
+			write_sector(previous_sector_offset, (BYTE*) fat_cluster_entries);
 		}
 		previous_cluster = free_cluster;
 		num_sectors_used_in_cluster=0;
@@ -133,45 +134,9 @@ void write_buf(byte *buf)
 	num_sectors_used_in_cluster++;
 	// update directory entry
 	dirs[previous_dir_entry_offset].size+=512;
-	write_sector(directory_table_offset + previous_dir_sector_offset, (byte *)dirs);
+	write_sector(directory_table_offset + previous_dir_sector_offset, (BYTE *)dirs);
 }
-#if 0
-int allocate_cluster(char *buf) {
-	unsigned dir_entry_sector_offset=0;
 
-	// find a directory entry to write this file to 
-	/* scan the FAT sectors and look for a free cluster (0 entry) */
-	// could not find a free cluster
-	return -1; 
-
-//at this point what is in the cluster buffer is the sector of the free (current) cluster
-cluster_found:
-	assert (SECTOR_FOR_CLUSTER(current_cluster) == fat_offset + sector_offset);
-
-	//update the cluster to be and "end of file" marker
-	fat_cluster_entries[current_cluster] = 0xffff;
-	if (previous_cluster > 0)
-	{
-	} 
-	// at this point, the FAT entries are committed, so we can reuse the buffer for storage space
-	dir_entry_t *free_dir = NULL;
-	if (previous_dir_sector_offset < 0)
-	{
-	} else {
-		free_dir = &dirs[previous_dir_sector_offset];
-	}
-	previous_cluster = current_cluster;
-
-	int cluster_sector = ;
-	printf("Writing buffer to sector %d\n", cluster_sector);
-	strcpy(cluster_write_buf, "THIS IS A TEST MOOFOO");
-	free_dir->size += 512;
-
-	write_sector(directory_table_offset + previous_dir_sector_offset, (byte *)dirs);
-
-	write_sector(cluster_sector, cluster_write_buf); 
-	return 0;
-}
 
 void read_cluster(int start_sector, unsigned long size) {
 	char buf[512+1];
@@ -187,9 +152,8 @@ void read_cluster(int start_sector, unsigned long size) {
 	}
 }
 
-#endif
 
-void init_fat16(byte *buf)
+void init_fat16(BYTE *buf)
 {
 	read_sector(0, buf);
 	MBR_t *mbr = (MBR_t *) buf;
@@ -235,19 +199,52 @@ void init_fat16(byte *buf)
 	num_sectors_used_in_cluster = 0;
 }
 
+void read_directory_entries() {
+	for (int sector=0; sector < 32; ++sector) {
+		read_sector(directory_table_offset + sector, (BYTE *)dirs);
+		for (int i=0; i<max_root_entries/32; i++) {
+			unsigned char first_byte = dirs[i].filename[0];
+
+			if (first_byte != 0x00 && first_byte != 0xe5 && first_byte != 0x05) {
+				if ((dirs[i].attributes ==0x10 )) {
+					printf("\tsubdir=%s attribute=%x (size=%u, start=%u)\n",dirs[i].filename, dirs[i].attributes,dirs[i].size, dirs[i].cluster_start);
+				}
+				if ((dirs[i].attributes ==0x20 )) {
+					int size_left = dirs[i].size;
+					int next = dirs[i].cluster_start;
+					printf("\t[%d], %x file=%s.%s attribute=%x (size=%u, start=%u, offset=%x)\n",i,first_byte,dirs[i].filename, dirs[i].extension,dirs[i].attributes,dirs[i].size, dirs[i].cluster_start,cluster_offset);
+					while (next != 0xffff) {
+						assert(size_left > 0);
+						int cluster_sector = (cluster_offset+next*32-64);
+						read_cluster(cluster_sector, size_left);
+						// get the cluster for the next part of the file
+						next = get_next_cluster(next);
+						size_left -= 16384;
+					}
+					assert(size_left <= 0);
+				}
+			}
+		}
+	}
+}
+
 int main() {
 	/* sanity check */
-	assert(sizeof(byte) == 1); 
-	assert(sizeof(word) == 2);
-	assert(sizeof(dword) == 4); 
+	assert(sizeof(BYTE) == 1); 
+	assert(sizeof(WORD) == 2);
+	assert(sizeof(DWORD) == 4); 
 
-	byte buf[512];
-	image = fopen("fat16_image_blank.img", "rb+");
+	BYTE buf[512];
+	image = fopen("fat16.img", "rb+");
 	if (!image)
 	{
 		printf("Error opening file"); 
 	}
 	init_fat16(buf);
+	read_directory_entries();
+	return 0;
+
+	/*
 	create_file("S","TXT");
 	for (int i=0; i< 54; i++)
 	{
@@ -256,44 +253,9 @@ int main() {
 	}
 
 	
-	/*
 	allocate_cluster(buf); 
 	read_directory_entries();
 	*/
 	return 0;
 }
-#if 0
-void read_directory_entries() {
-	int skip_sectors = (reserved_sectors + sectors_per_fat * 2);
-	fseek(image, SECTOR2BYTE(boot_offset+skip_sectors), SEEK_SET);
-	fread(dirs, sizeof(dir_entry_t), 512, image); 
-
-	for (int i=0; i<max_root_entries; i++) {
-		unsigned char first_byte = dirs[i].filename[0];
-		if (first_byte != 0x00 && first_byte != 0xe5 && first_byte != 0x05) {
-			if ((dirs[i].attributes ==0x10 )) {
-				printf("\tsubdir=%s attribute=%x (size=%u, start=%u)\n",dirs[i].filename, dirs[i].attributes,dirs[i].size, dirs[i].cluster_start);
-			}
-			if ((dirs[i].attributes ==0x20 )) {
-				int size_left = dirs[i].size;
-				int next = dirs[i].cluster_start;
-				printf("\t[%d], %x file=%s.%s attribute=%x (size=%u, start=%u, offset=%x)\n",i,first_byte,dirs[i].filename, dirs[i].extension,dirs[i].attributes,dirs[i].size, dirs[i].cluster_start,cluster_offset);
-				while (size_left > 0) {
-					int cluster_sector = (cluster_offset+next*32-64);
-					read_cluster(cluster_sector, size_left);
-					// get the cluster for the next part of the file
-					next = get_next_cluster(next);
-					size_left -= 16384;
-
-					//EOF condition
-					if (next == 0xffff) {
-						assert(size_left <= 0);
-						break;
-					}
-				}
-			}
-		}
-	}
-}
-#endif
 
