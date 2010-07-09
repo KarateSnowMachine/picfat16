@@ -31,7 +31,7 @@ BYTE read_spi_byte(void)
 
 void init_spi()
 {
-
+	// magical incantation to enable remapping of pins
 	EECON2=0x55;
 	EECON2=0xAA;
 	PPSCONbits.IOLOCK = 0;
@@ -42,6 +42,7 @@ void init_spi()
 	RPOR6=9; //Map SDO2 (9) to RP6
 	RPOR8=12; //Map CS2 (12) to RP8
 
+	// incantation to write the pin mapping changes
 	EECON2=0x55;
 	EECON2=0xAA;
 	PPSCONbits.IOLOCK = 1;
@@ -110,21 +111,9 @@ void SD_init(void)
 	{
 		x = read_spi_byte();
 	}	
-	// wait for a command response
+	// wait for a command response ( 0 = OK )
 	while ((x & 0x80) != 0);
-/*
-	if (x != 0x01)
-	{
-		//error condition 
-		while (1) 
-		{
-			light_toggle();
-			Delayms();
-			Delayms();
-			Delayms();
-		}
-	}
-*/	
+
 // CMD1 = init command	
 	while(1)
 	{
@@ -156,7 +145,6 @@ void SD_read_sector(SD_addr addr, BYTE *buf)
 {
 	BYTE cmd_response, data_token;
 	int d; 
-	light_off(); 
 
 	SD_CS = 0; 
 	
@@ -175,6 +163,10 @@ void SD_read_sector(SD_addr addr, BYTE *buf)
 	}
 	while ((cmd_response & 0x80) != 0);
 
+	if (cmd_response & 0x7F != 0) {
+		ERROR();
+	}
+
 
 	// TODO: check command response error condition here
 
@@ -191,34 +183,35 @@ void SD_read_sector(SD_addr addr, BYTE *buf)
 	// 2 CRC tokens
 	read_spi_byte();
 	read_spi_byte();
+
 	SD_CS=1; 
 }
 char SD_write_sector(SD_addr addr, BYTE *buf)
 {
-	BYTE x,r;
+	BYTE x,data_response;
 	int d;
 	light_off();
 	SD_CS=0;
-	// CMD24 = write to sector, 01_01|1000 = 0x58
-		WriteSPIM(0xFF);
+	
+		// I completely forget why this is here, probably as some kind of state transition point to denote the start of the command on the next byte
+		WriteSPIM(0xFF); 
+		// CMD24 = write to sector, 01_01|1000 = 0x58
 		WriteSPIM(0x58);
 		WriteSPIM(addr.addr3); 
 		WriteSPIM(addr.addr2); 
 		WriteSPIM(addr.addr1); 
 		WriteSPIM(0x00);
-		WriteSPIM(0xFF);
+		WriteSPIM(0xFF); //CRC byte
 		do 
 		{
 		 	x = read_spi_byte();
 		}
-		while ((x & 0x80) != 0);
+		//wait for R1 response (0 followed by status code)
+		while (x != 0x00);
 
-		if (x  != 0x00)
-		{	
-			light_off()	 
-			return x;
-		} 
-		
+		// send at least 1 byte of empty clocks before sending out data token (2 just to be safe?)
+		WriteSPIM(0xFF); 
+		WriteSPIM(0xFF); 
 
 		// data token
 		WriteSPIM(0xFE);
@@ -229,24 +222,24 @@ char SD_write_sector(SD_addr addr, BYTE *buf)
 			x = SPIBUF; //clear buffer
 		}
 		// 2 crap CRC bytes
-		WriteSPIM(0xFF);
-		WriteSPIM(0xFF);
-
-		// after the CRC comes the data response packet
-		do 
-		{
-		 	x = read_spi_byte();
-			if (((x & 0x1F)>> 1) ==0x02)
-				break;
+		WriteSPIM(0x55);
+		WriteSPIM(0x55);
+		// data response should come directly after the CRC byte
+		data_response = read_spi_byte();
+		if ((x & 0x1F) == 0x0d || (x & 0x1F) == 0x0b) { // write error
+			SLOW_ERROR();
+		} else if ((x & 0x1F) != 0x05) {
+			goto good; 	
+		} else {
+			ERROR();
 		}
-		while (1); // last byte is always 1 in this response packet, we are looking for the last byte = 0101
-
-		//read until non zero
+good:
+		//read until non zero(0 = still busy)
 		do 
 		{
 			x = read_spi_byte();
 		}
-		while (x != 0);
+		while (x == 0);
 
 		light_on();
 		SD_CS=1;

@@ -2,7 +2,8 @@
 #define _SPI_H_
 
 #include "p18f24j50.h"
-#define ERROR() while (1) { light_toggle(); }
+#define ERROR() while (1) { light_toggle(); Delayms(); }
+#define SLOW_ERROR() while (1) { light_toggle(); Delayms(); Delayms();Delayms();Delayms();Delayms();Delayms();Delayms();}
 typedef unsigned char BYTE; 
 typedef unsigned short WORD;
 		#define INPUT 1;

@@ -47,12 +47,14 @@ BYTE mbr_boot_directory_buf2[256];
 #define SECTOR_FOR_CLUSTER_DATA(c) (cluster_offset+(c-2)*32)
 #define SECTOR_FOR_CLUSTER(c) (fat_offset+(c/256))
 
-void write_sector(DWORD sector, BYTE *buf)
+char write_sector(DWORD sector, BYTE *buf)
 {
 	SD_addr addr;
 	addr.full_addr = sector<<9;
-	SD_write_sector(addr, buf); 
+	return SD_write_sector(addr, buf); 
 }
+
+#define write_sector_delay(sector,buf) write_sector((sector), (buf));
 
 void read_sector(DWORD sector, BYTE *buf) {
 	SD_addr addr;
@@ -107,14 +109,28 @@ void create_file(char *name, char *ext)
 {
 	unsigned free_cluster = find_free_cluster();
 	DWORD sector_for_free_cluster;
+	WORD fake_create_time, fake_create_date; 
+	fake_create_time = 0x2108; //04:08:16am
+	fake_create_date = 0x3ee7; // july 7 2010
 	free_dir = find_free_directory_entry(&previous_dir_sector_offset, &previous_dir_entry_offset);
-	free_dir->filename[0]='G';
-	free_dir->filename[1]='P';
-	free_dir->filename[2]='S';
-	free_dir->filename[3]=0;
-	free_dir->extension[0]='T';
-	free_dir->extension[1]='X';
-	free_dir->extension[2]='T';
+	free_dir->filename[0]='g';
+	free_dir->filename[1]='p';
+	free_dir->filename[2]='s';
+	free_dir->filename[3]='_';
+	free_dir->filename[4]=(char) (previous_dir_entry_offset%26)+97; // convert the dir entry number into a lowercase
+	free_dir->filename[5]=(char) (previous_dir_entry_offset%10)+48; // numbers 0-9
+	free_dir->filename[6]=' ';
+	free_dir->filename[7]=' ';
+	free_dir->extension[0]='t';
+	free_dir->extension[1]='x';
+	free_dir->extension[2]='t';
+	// TODO: pick a GPS sentence and determine the date from it to put as the create date
+	free_dir->create_date = fake_create_date;
+	free_dir->create_time = fake_create_time;
+	free_dir->modified_date = fake_create_date;
+	free_dir->modified_time = fake_create_time;
+	free_dir->last_access = fake_create_time;
+	
 /*
 	snprintf(free_dir->filename, 9, "%s%d", name,previous_dir_entry_offset);
 	snprintf(free_dir->extension, 4, "%s", ext);
@@ -123,17 +139,10 @@ void create_file(char *name, char *ext)
 	free_dir->cluster_start=free_cluster;
 	free_dir->size = 0;
 	fat_cluster_entries[free_cluster] = 0xffff;
-	write_sector(directory_table_offset + previous_dir_sector_offset, (BYTE *) dirs);
+	write_sector_delay(directory_table_offset + previous_dir_sector_offset, (BYTE *) dirs);
 	sector_for_free_cluster = SECTOR_FOR_CLUSTER(free_cluster);
 
-	Delayms();
-	Delayms();
-	Delayms();
-
-	write_sector(sector_for_free_cluster, (BYTE *) fat_cluster_entries);
-	Delayms();
-	Delayms();
-	Delayms();
+	write_sector_delay(sector_for_free_cluster, (BYTE *) fat_cluster_entries);
 
 	previous_cluster = free_cluster;
 	num_sectors_used_in_cluster=0;
@@ -143,7 +152,7 @@ void write_buf(BYTE *buf)
 {
 	unsigned int previous_sector_offset, sector_offset;
 	unsigned free_cluster;
-	// if we have written more than a cluster, allocate a new cluster and link it into the FAT
+	// if we have written more than a cluster's worth of sectors, allocate a new cluster and link it into the FAT
 	if (num_sectors_used_in_cluster == 32)
 	{
 		free_cluster = find_free_cluster();
@@ -154,26 +163,24 @@ void write_buf(BYTE *buf)
 		sector_offset = SECTOR_FOR_CLUSTER(free_cluster);
 		if (sector_offset == previous_sector_offset) {
 			fat_cluster_entries[previous_cluster] = free_cluster; 
-			write_sector(sector_offset, (BYTE*) fat_cluster_entries);
+			write_sector_delay(sector_offset, (BYTE*) fat_cluster_entries);
 		} else {
-			write_sector(sector_offset, (BYTE*) fat_cluster_entries);
+			write_sector_delay(sector_offset, (BYTE*) fat_cluster_entries);
 			read_sector(previous_sector_offset, (BYTE*) fat_cluster_entries); 
 			fat_cluster_entries[previous_cluster] = free_cluster;
-			write_sector(previous_sector_offset, (BYTE*) fat_cluster_entries);
+			write_sector_delay(previous_sector_offset, (BYTE*) fat_cluster_entries);
 		}
 		previous_cluster = free_cluster;
 		num_sectors_used_in_cluster=0;
 	}
 
-	// update data
-	write_sector(SECTOR_FOR_CLUSTER_DATA(previous_cluster)+num_sectors_used_in_cluster, buf);
+	// update data in the cluster (by adding a new sector to it)
+	write_sector_delay(SECTOR_FOR_CLUSTER_DATA(previous_cluster)+num_sectors_used_in_cluster, buf);
 	num_sectors_used_in_cluster++;
+
 	// update directory entry
 	dirs[previous_dir_entry_offset].size+=512;
-	Delayms();
-	Delayms();
-	Delayms();
-	write_sector(directory_table_offset + previous_dir_sector_offset, (BYTE *)dirs);
+	write_sector_delay(directory_table_offset + previous_dir_sector_offset, (BYTE *)dirs);
 }
 
 void init_fat16()
@@ -236,7 +243,8 @@ void SD_read_test()
 {
 	init_fat16();
 	create_file("A","GPS");
-	write_buf(mbr_boot_directory_buf2);
+
+
 	light_on();
 	while(1);
 

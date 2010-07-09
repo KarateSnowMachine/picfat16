@@ -91,9 +91,6 @@ char get_uart_byte()
 		RCSTA1bits.CREN=0;
 		while (1)
 		{
-			Delayms();
-			Delayms();
-			Delayms();
 			Delayms();		
 			light_toggle();
 		}
@@ -113,20 +110,6 @@ typedef enum _packet_type {UNKNOWN, RMC, GGA} packet_type;
 
 void main()
 {
-	init_light();
-	SD_init();
-	light_off();
-	SD_read_test();
-	while(1);	
-
-
-}
-
-
-// below is the "real main" 
-#if 0
-void main()
-{
 
 	char tmpchr;
 	char retval;
@@ -144,6 +127,8 @@ void main()
 	SD_init();
 	init_uart();
 
+	init_fat16();
+	create_file("A","GPS");
 
 //	init_slow_gps();
 	//INTCONbits.GIEH=1; //start 'er up
@@ -165,7 +150,7 @@ void main()
 			sentence_finished=1;
 			pkt_type=UNKNOWN;
 		}
-		light_off();
+	//	light_off();
 		//according to the data sheet 1=SPS mode(?), 2=DGPS SBS mode, 6=Dead Reconing(?) mean the fixes are valid
 		if (pkt_type == GGA && sentence_start == 43 && !(tmpchr == '1' || tmpchr== '2' || tmpchr=='6'))
 		{
@@ -209,14 +194,18 @@ void main()
 		rx_read++;
 		sentence_start++;
 		bytes_received++;
-		light_on();
+//		light_on();
 
 		if (bytes_received >= 512 && sentence_finished)
 		{
 			RCSTA1bits.CREN=0;	//disable reception for now to avoid overrun errors
 			//write data to the SD card
+#if 0
 			addr.full_addr = sector_num<<9;
 			retval  = SD_write_sector(addr, (BYTE *)(rx_read-bytes_received));
+#else
+			retval = write_buf(rx_buffer3);
+#endif
 			if (retval != 0)
 				goto bad;
 
@@ -241,31 +230,9 @@ bad:
 good:
 	while(1)
 	{
-		light_toggle();
-		Delayms();
-		Delayms();
+		// we shouldn't even get here ever unless the card is full 
 	}
-
-/*
-	for (i=0; i<768; i++)
-	{
-
-		if (bytes_received == 512)
-		{
-			SD_write_sector(0x00, rx_buffer1);
-
-			INTCONbits.GIEH=0;
-			rx_ptr-=512;
-			bytes_received-=512;
-			INTCONbits.GIEH=1;
-		}
-
-
-	}
-*/
-
-
 
 } // end main
-#endif 
+
 	

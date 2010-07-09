@@ -52,7 +52,14 @@ typedef struct _dir_entry_t {
 	char filename[8];
 	char extension[3];
 	BYTE attributes;
-	BYTE whatever[14]; 
+	BYTE reserved;
+	BYTE create_time_fine; 
+	WORD create_time;
+	WORD create_date;
+	WORD last_access;
+	WORD ea_index_unused;
+	WORD modified_time;
+	WORD modified_date;
 	WORD cluster_start;
 	DWORD size;
 } dir_entry_t;
