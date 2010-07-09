@@ -113,18 +113,20 @@ void create_file(char *name, char *ext)
 	fake_create_time = 0x2108; //04:08:16am
 	fake_create_date = 0x3ee7; // july 7 2010
 	free_dir = find_free_directory_entry(&previous_dir_sector_offset, &previous_dir_entry_offset);
-	free_dir->filename[0]='g';
-	free_dir->filename[1]='p';
-	free_dir->filename[2]='s';
+	free_dir->filename[0]='G';
+	free_dir->filename[1]='P';
+	free_dir->filename[2]='S';
 	free_dir->filename[3]='_';
-	free_dir->filename[4]=(char) (previous_dir_entry_offset%26)+97; // convert the dir entry number into a lowercase
+	free_dir->filename[4]=(char) (previous_dir_entry_offset%26)+'A'; // convert the dir entry number into a lowercase
 	free_dir->filename[5]=(char) (previous_dir_entry_offset%10)+48; // numbers 0-9
 	free_dir->filename[6]=' ';
 	free_dir->filename[7]=' ';
-	free_dir->extension[0]='t';
-	free_dir->extension[1]='x';
-	free_dir->extension[2]='t';
+	free_dir->extension[0]='T';
+	free_dir->extension[1]='X';
+	free_dir->extension[2]='T';
 	// TODO: pick a GPS sentence and determine the date from it to put as the create date
+	free_dir->reserved = 0x18; // this is what windows does, apparently
+	free_dir->create_time_fine = 0;
 	free_dir->create_date = fake_create_date;
 	free_dir->create_time = fake_create_time;
 	free_dir->modified_date = fake_create_date;
