@@ -288,6 +288,8 @@ void main()
 				// to make life easy, move the leftover parts of the buffer back to the top and continue copying data below it
 				memcpy(rx_buffer3, rx_read - bytes_received, bytes_received);
 				rx_read=rx_buffer3+bytes_received;
+			} else {
+				rx_read = rx_buffer3;
 			}
 
 
@@ -300,11 +302,6 @@ void main()
 	}
 bad:
 	SLOW_ERROR();
-good:
-	while(1)
-	{
-		// we shouldn't even get here ever unless the card is full 
-	}
 
 } // end main
 
