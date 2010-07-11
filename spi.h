@@ -4,7 +4,9 @@
 #include "p18f24j50.h"
 #define ERROR() while (1) { light_toggle(); Delayms(); }
 #define SLOW_ERROR() while (1) { light_toggle(); Delayms(); Delayms();Delayms();Delayms();Delayms();Delayms();Delayms();}
-
+typedef unsigned char BYTE; 
+typedef unsigned short WORD;
+typedef unsigned long	DWORD;
 		#define INPUT 1;
 		#define OUTPUT 0;
 
@@ -56,7 +58,6 @@
         #define SPIINPORT           PORTBbits.RB2
         #define SPIOUTPORT          PORTBbits.RB3
 
-typedef unsigned long		DWORD;
 typedef union {
 	struct {
 		DWORD full_addr;

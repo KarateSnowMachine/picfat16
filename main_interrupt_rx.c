@@ -89,11 +89,7 @@ char get_uart_byte()
 	if (RCSTA1bits.OERR) 
 	{
 		RCSTA1bits.CREN=0;
-		while (1)
-		{
-			Delayms();		
-			light_toggle();
-		}
+		SLOW_ERROR();
 		RCSTA1bits.CREN=1;
 	}
 	while (PIR1bits.RC1IF == 0);
@@ -108,19 +104,80 @@ typedef enum _packet_type {UNKNOWN, RMC, GGA} packet_type;
 
 #define wait_for_eol() 	while (get_uart_byte()!='\n');
 
+BYTE find_date_time_from_sentence_buffer(WORD *date, WORD *time, char *bufx, unsigned buf_size) 
+{
+	#define UTC_OFFSET 5
+	char date_buf[6];
+	char time_buf[6];
+	WORD tmp_date=0, tmp_time=0;
+	unsigned short h,m,s,y,M,d;
+	
+	char c = '$';
+	char *start, *end;
+	unsigned i=0,x;
+
+	start = bufx;
+	end = bufx;
+	while (*start != 'R') { if ( i>= buf_size) return -1; start++; i++; } //find the start of an RMC sentence
+	while (*start != ',') { if ( i>= buf_size) return -1; start++; i++; } // go to the first field (time)
+	start++; // point to the first char of the time stamp
+	end = start+1;
+	while (*end   != '.') { if ( i>= buf_size) return -1; end++; i++; } // point end to the decimal point in the time
+
+	memcpy (time_buf, start, end-start); // copy out the time field
+
+	//fast forward 8 fields to the date stamp
+	for (x=0; x<8; ++x) {
+		while (*start != ',') { if ( i>= buf_size) return -1; start++; i++; } start++;
+	}
+	end = start+1;
+	while (*end != ',') { if ( i>= buf_size) return -1; end++; i++; } // point end to the decimal point in the time
+	memcpy (date_buf, start, end-start);
+
+	// convert the ascii values into actual integers
+	for (i=0; i<6; ++i)	{
+		date_buf[i] -= '0';
+		time_buf[i] -= '0';
+	}
+	// deal with the time first since it is easier [0|5bits H|5bits M|5bits S/2]
+
+	y = (date_buf[4]*10+date_buf[5]+20); // +20 because FAT16 is relative to jan 1 1980
+	M = (date_buf[2]*10 + date_buf[3]); //m
+	d = ((date_buf[0]*10 + date_buf[1])); //d
+
+	h = (time_buf[0]*10 + time_buf[1]);
+	if (h > UTC_OFFSET) { 
+		h -= UTC_OFFSET;
+	} else {
+		d--;
+		h+24-UTC_OFFSET;
+	}
+	m = (time_buf[2]*10 + time_buf[3]);
+	s = ((time_buf[4]*10 + time_buf[5])/2);
+
+	*time = (h<<11) | (m<<5) | s;
+	*date = (y<<9) | (M<<5) | d;
+
+	return 0;
+}
+
 void main()
 {
 
 	char tmpchr;
 	char retval;
-	DWORD sector_num=0;
 	SD_addr addr=0;
-	int a = sizeof(int);
-	int sentence_start=-1;
-	char sentence_finished=0;
 
-	int bytes_received = 0;
+	//number of characters since the start of the current sentence
+	int sentence_start=-1;
+	unsigned short sentence_finished=0;
+	unsigned char file_created=0;
+
+	unsigned long bytes_received = 0;
 	char *rx_read = rx_buffer3;
+	char *rx_read_start; 
+	WORD fat16_date, fat16_time;
+
 	packet_type pkt_type=UNKNOWN;
 
 	init_light();
@@ -128,7 +185,7 @@ void main()
 	init_uart();
 
 	init_fat16();
-	create_file("A","GPS");
+	
 
 //	init_slow_gps();
 	//INTCONbits.GIEH=1; //start 'er up
@@ -147,6 +204,7 @@ void main()
 		}
 		if (tmpchr == '\n')
 		{
+			sentence_start=0;
 			sentence_finished=1;
 			pkt_type=UNKNOWN;
 		}
@@ -195,38 +253,53 @@ void main()
 		sentence_start++;
 		bytes_received++;
 //		light_on();
-
+	
 		if (bytes_received >= 512 && sentence_finished)
 		{
 			RCSTA1bits.CREN=0;	//disable reception for now to avoid overrun errors
+			rx_read_start = rx_read - bytes_received;  // should always be the same as rx_buffer3 
+
+			if (!file_created) 
+			{
+				retval = find_date_time_from_sentence_buffer(&fat16_date, &fat16_time, rx_read_start, bytes_received);				
+				if (retval == 0) {
+					create_file(
+						 fat16_date,
+						 fat16_time
+					);
+				} else {
+					create_file(
+						 0x3ee7, /* july 7 2010 */
+						 0x2108 /*04:08:16am */
+							);	
+				}
+				file_created = 1; 
+			}
+
 			//write data to the SD card
-#if 0
-			addr.full_addr = sector_num<<9;
-			retval  = SD_write_sector(addr, (BYTE *)(rx_read-bytes_received));
-#else
-			retval = write_buf((BYTE *)(rx_read-bytes_received));
-#endif
+			write_buf((BYTE *)rx_read_start);
+
+/*
 			if (retval != 0)
 				goto bad;
-
+*/
 			bytes_received-=512;
-			memcpy(rx_buffer3, rx_read-bytes_received, bytes_received);
-			rx_read=rx_buffer3+bytes_received;
+			if (bytes_received > 0) {
+				// to make life easy, move the leftover parts of the buffer back to the top and continue copying data below it
+				memcpy(rx_buffer3, rx_read - bytes_received, bytes_received);
+				rx_read=rx_buffer3+bytes_received;
+			}
 
-			sector_num++;
-			if (sector_num >= ((2<<20)-1))
-				goto good;
 
 			//renable reception
 			RCSTA1bits.CREN=1;
+			/* odds are we are going to have a fraction of a sentence if we start logging 
+				whatever comes in now, so wait for the sentence to end before going on */
 			wait_for_eol();
 		}
 	}
 bad:
-	while(1) 
-	{
-		light_on();
-	}
+	SLOW_ERROR();
 good:
 	while(1)
 	{

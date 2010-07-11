@@ -114,14 +114,12 @@ WORD find_free_cluster()
 	return 0;
 }
 
-void create_file(char *name, char *ext)
+void create_file(WORD create_date, WORD create_time)
 {
 	unsigned free_cluster = find_free_cluster();
 	unsigned dir_entry_num;
 	DWORD sector_for_free_cluster;
-	WORD fake_create_time, fake_create_date; 
-	fake_create_time = 0x2108; //04:08:16am
-	fake_create_date = 0x3ee7; // july 7 2010
+
 	free_dir = find_free_directory_entry(&previous_dir_sector_offset, &previous_dir_entry_offset);
 	dir_entry_num = previous_dir_sector_offset*16+previous_dir_entry_offset;
 	free_dir->filename[0]='G';
@@ -135,14 +133,13 @@ void create_file(char *name, char *ext)
 	free_dir->extension[0]='T';
 	free_dir->extension[1]='X';
 	free_dir->extension[2]='T';
-	// TODO: pick a GPS sentence and determine the date from it to put as the create date
 	free_dir->reserved = 0x18; // this is what windows does, apparently
 	free_dir->create_time_fine = 0;
-	free_dir->create_date = fake_create_date;
-	free_dir->create_time = fake_create_time;
-	free_dir->modified_date = fake_create_date;
-	free_dir->modified_time = fake_create_time;
-	free_dir->last_access = fake_create_time;
+	free_dir->create_date = create_date;
+	free_dir->create_time = create_time;
+	free_dir->modified_date = create_date;
+	free_dir->modified_time = create_time;
+	free_dir->last_access = create_time;
 	
 /*
 	snprintf(free_dir->filename, 9, "%s%d", name,previous_dir_entry_offset);
@@ -188,6 +185,7 @@ void write_buf(BYTE *buf)
 			fat_cluster_entries[previous_cluster%256] = free_cluster;
 			write_sector(previous_sector_offset, (BYTE*) fat_cluster_entries);
 		}
+		light_toggle(); // to keep the blinky pattern the same 
 		previous_cluster = free_cluster;
 		num_sectors_used_in_cluster=0;
 	}
@@ -257,27 +255,3 @@ void init_fat16()
 	previous_dir_sector_offset=-1;
 	num_sectors_used_in_cluster = 0;
 }
-void SD_read_test()
-{
-	init_fat16();
-	create_file("A","GPS");
-
-
-	light_on();
-	while(1);
-
-	
-}
-/*
-int main() {
-	// sanity check
-	assert(sizeof(BYTE) == 1); 
-	assert(sizeof(WORD) == 2);
-	assert(sizeof(DWORD) == 4); 
-
-	BYTE buf[512];
-	init_fat16(buf);
-	create_file("S","TXT");
-	return 0;
-}
-*/
