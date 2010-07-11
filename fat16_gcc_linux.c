@@ -214,14 +214,17 @@ void read_directory_entries() {
 					int next = dirs[i].cluster_start;
 					printf("\t[%d], %x file=%s.%s attribute=%x (size=%u, start=%u, offset=%x)\n",i,first_byte,dirs[i].filename, dirs[i].extension,dirs[i].attributes,dirs[i].size, dirs[i].cluster_start,cluster_offset);
 					while (next != 0xffff) {
-						assert(size_left > 0);
+						if (size_left < 0) break;
+						assert(size_left >= 0);
 						int cluster_sector = (cluster_offset+next*32-64);
 						read_cluster(cluster_sector, size_left);
 						// get the cluster for the next part of the file
 						next = get_next_cluster(next);
 						size_left -= 16384;
 					}
-					assert(size_left <= 0);
+					if(size_left > 0) {
+							printf("WARNING: directory entry size doesn't match actual size\n");
+					}
 				}
 			}
 		}

@@ -99,7 +99,7 @@ WORD find_free_cluster()
 		read_sector(fat_offset+sector_offset,(BYTE*)fat_cluster_entries);
 		for (current_cluster=0; current_cluster < 256; ++current_cluster) {
 			if (fat_cluster_entries[current_cluster] == 0) {
-				return current_cluster;
+				return sector_offset*256+current_cluster;
 			}
 		}
 	}
@@ -158,19 +158,16 @@ void write_buf(BYTE *buf)
 	// if we have written more than a cluster's worth of sectors, allocate a new cluster and link it into the FAT
 	if (num_sectors_used_in_cluster == 32)
 	{
-		if ((free_cluster = find_free_cluster()) == 0)
-		{
-			ERROR();
-		}
-		// after find_free_cluster(), the sector that contains the free cluster's FAT entry is in the buffer
-
-		fat_cluster_entries[free_cluster] = 0xffff;
+		free_cluster = find_free_cluster();
+		fat_cluster_entries[free_cluster%256] = 0xffff;
+		// this is the easy case where since the cluster is the same for both FAT entries, we can modify them in one shot
+		// and write back the whole sector 
 		previous_sector_offset = SECTOR_FOR_CLUSTER(previous_cluster);
 		sector_offset = SECTOR_FOR_CLUSTER(free_cluster);
 
 		// this is the easy case where since the cluster is the same for both FAT entries, we can modify them in one shot and write back the whole sector 
 		if (sector_offset == previous_sector_offset) {
-			fat_cluster_entries[previous_cluster] = free_cluster; 
+			fat_cluster_entries[previous_cluster%256] = free_cluster; 
 			write_sector(sector_offset, (BYTE*) fat_cluster_entries);
 		} else {
 			/* this is the tricky case where the currently loaded sector is "sector_offset" (new cluster), so we write that back first with the modified free_cluster entry, and then 
@@ -178,7 +175,7 @@ void write_buf(BYTE *buf)
 					*/
 			write_sector(sector_offset, (BYTE*) fat_cluster_entries);
 			read_sector(previous_sector_offset, (BYTE*) fat_cluster_entries); 
-			fat_cluster_entries[previous_cluster] = free_cluster;
+			fat_cluster_entries[previous_cluster%256] = free_cluster;
 			write_sector(previous_sector_offset, (BYTE*) fat_cluster_entries);
 		}
 		previous_cluster = free_cluster;
