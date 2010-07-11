@@ -75,9 +75,16 @@ dir_entry_t *find_free_directory_entry(long *sector_offset, unsigned *entry_offs
 	int sector, i; 
 	// read the directory table one sector at a time 
 	//TODO: fix up the hardcoding
-	for (sector=0; sector < 32; ++sector) {
+
+// (512b/sector) / (32b/entry) = 16 entries/sector
+#define entries_per_sector 16 
+// (512 entries * 32b/entry) / (512 bytes/sector) = 32 sectors 
+#define sectors_per_dir_table 32
+
+	for (sector=0; sector < sectors_per_dir_table; ++sector) {
 		read_sector(directory_table_offset + sector, (BYTE *)dirs);
-		for (i=0; i<max_root_entries/32; i++) {
+		
+		for (i=0; i<entries_per_sector; i++) {
 			unsigned char first_byte = dirs[i].filename[0];
 			if (first_byte == 0x00 || first_byte == 0xe5 || first_byte == 0x05)
 			{
@@ -86,18 +93,20 @@ dir_entry_t *find_free_directory_entry(long *sector_offset, unsigned *entry_offs
 				return &dirs[i];
 			}
 		}
-		return NULL;
 	}
+	return NULL;
 }
+
 unsigned find_free_cluster()
 {
 	int current_cluster=0;
 	int sector_offset;
 	for (sector_offset=0; sector_offset<sectors_per_fat; sector_offset++) {
-		//TODO: clean this up
+
 		read_sector(fat_offset+sector_offset,(BYTE*)fat_cluster_entries);
 		for (current_cluster=0; current_cluster < 256; ++current_cluster) {
-			if (fat_cluster_entries[current_cluster] == 0) {
+			if (fat_cluster_entries[current_cluster] == 0) 
+			{ // found it
 				return sector_offset*256+current_cluster;
 			}
 		}
@@ -108,17 +117,19 @@ unsigned find_free_cluster()
 void create_file(char *name, char *ext)
 {
 	unsigned free_cluster = find_free_cluster();
+	unsigned dir_entry_num;
 	DWORD sector_for_free_cluster;
 	WORD fake_create_time, fake_create_date; 
 	fake_create_time = 0x2108; //04:08:16am
 	fake_create_date = 0x3ee7; // july 7 2010
 	free_dir = find_free_directory_entry(&previous_dir_sector_offset, &previous_dir_entry_offset);
+	dir_entry_num = previous_dir_sector_offset*16+previous_dir_entry_offset;
 	free_dir->filename[0]='G';
 	free_dir->filename[1]='P';
 	free_dir->filename[2]='S';
 	free_dir->filename[3]='_';
-	free_dir->filename[4]=(char) (previous_dir_entry_offset%26)+'A'; // convert the dir entry number into a lowercase
-	free_dir->filename[5]=(char) (previous_dir_entry_offset%10)+48; // numbers 0-9
+	free_dir->filename[4]=(char) (dir_entry_num%26)+'A'; // convert the dir entry number into a lowercase
+	free_dir->filename[5]=(char) (dir_entry_num%10)+48; // numbers 0-9
 	free_dir->filename[6]=' ';
 	free_dir->filename[7]=' ';
 	free_dir->extension[0]='T';
@@ -140,7 +151,7 @@ void create_file(char *name, char *ext)
 	free_dir->attributes=0x20; //ARCHIVE
 	free_dir->cluster_start=free_cluster;
 	free_dir->size = 0;
-	fat_cluster_entries[free_cluster] = 0xffff;
+	fat_cluster_entries[free_cluster%256] = 0xffff;
 	write_sector_delay(directory_table_offset + previous_dir_sector_offset, (BYTE *) dirs);
 	sector_for_free_cluster = SECTOR_FOR_CLUSTER(free_cluster);
 
@@ -165,6 +176,7 @@ void write_buf(BYTE *buf)
 		sector_offset = SECTOR_FOR_CLUSTER(free_cluster);
 		if (sector_offset == previous_sector_offset) {
 			fat_cluster_entries[previous_cluster%256] = free_cluster; 
+			// we could optimize here by choosing to delay the writeback until we fill a whole cluster, but this means more lost data on a sudden power out
 			write_sector_delay(sector_offset, (BYTE*) fat_cluster_entries);
 		} else {
 			write_sector_delay(sector_offset, (BYTE*) fat_cluster_entries);

@@ -190,7 +190,6 @@ char SD_write_sector(SD_addr addr, BYTE *buf)
 {
 	BYTE x,data_response;
 	int d;
-	light_off();
 	SD_CS=0;
 	
 		// I completely forget why this is here, probably as some kind of state transition point to denote the start of the command on the next byte
@@ -241,6 +240,6 @@ good:
 		}
 		while (x == 0);
 
-		light_on();
+		light_toggle();
 		SD_CS=1;
 }
