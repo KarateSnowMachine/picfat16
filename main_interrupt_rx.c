@@ -2,10 +2,13 @@
 
 #pragma config WDTEN=OFF,CP0=OFF,OSC=HS,WPDIS=OFF,WPCFG=OFF,XINST=OFF,FCMEN=OFF,IOL1WAY=OFF//,CPUDIV=OSC2_PLL2
 
+#include <string.h>
 #include "light.h"
 #include "spi.h"
 #include "fat16.h"
+#include "uart.h"
 
+//These get allocated with rx_buffer3[0] = lowest address and rx_buffer1[255] = highest address
 	#pragma udata a
 	char rx_buffer1[256]; 
 	#pragma udata b
@@ -277,7 +280,7 @@ void main()
 			}
 
 			//write data to the SD card
-			write_buf((BYTE *)rx_read_start);
+			write_buf_to_file((BYTE *)rx_read_start);
 
 /*
 			if (retval != 0)
@@ -286,11 +289,9 @@ void main()
 			bytes_received-=512;
 			if (bytes_received > 0) {
 				// to make life easy, move the leftover parts of the buffer back to the top and continue copying data below it
-				memcpy(rx_buffer3, rx_read - bytes_received, bytes_received);
-				rx_read=rx_buffer3+bytes_received;
-			} else {
-				rx_read = rx_buffer3;
+				memcpy(rx_read_start, rx_read - bytes_received, bytes_received);
 			}
+			rx_read-=512;	
 
 
 			//renable reception

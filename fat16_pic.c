@@ -93,8 +93,9 @@ dir_entry_t *find_free_directory_entry(long *sector_offset, unsigned *entry_offs
 				return &dirs[i];
 			}
 		}
-		return NULL;
+		
 	}
+	return NULL;
 }
 WORD find_free_cluster()
 {
@@ -158,7 +159,7 @@ void create_file(WORD create_date, WORD create_time)
 	num_sectors_used_in_cluster=0;
 }
 
-void write_buf(BYTE *buf)
+void write_buf_to_file(BYTE *buf)
 {
 	unsigned int previous_sector_offset, sector_offset;
 	WORD free_cluster;

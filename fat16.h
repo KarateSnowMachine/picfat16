@@ -64,4 +64,11 @@ typedef struct _dir_entry_t {
 	DWORD size;
 } dir_entry_t;
 
+//functions
+void init_fat16(void);
+WORD find_free_cluster(void);
+void create_file(WORD date, WORD time);
+void write_buf_to_file(BYTE *buf);
+
+
 #endif
