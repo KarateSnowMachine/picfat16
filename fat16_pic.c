@@ -15,6 +15,7 @@ WORD boot_offset;
 WORD reserved_sectors;
 WORD max_root_entries;
 WORD sectors_per_fat;
+WORD sectors_per_cluster;
 WORD directory_table_offset; 
 WORD fat_offset; 
 WORD cluster_offset;
@@ -44,7 +45,7 @@ BYTE mbr_boot_directory_buf2[256];
 /* don't put any other globals below here because the compiler will think
 	you want to put them in the udata section which will cause problems */
 
-#define SECTOR_FOR_CLUSTER_DATA(c) (cluster_offset+(c-2)*32)
+#define SECTOR_FOR_CLUSTER_DATA(c) (cluster_offset+(c-2)*sectors_per_cluster)
 #define SECTOR_FOR_CLUSTER(c) (fat_offset+(c/256))
 
 char write_sector(DWORD sector, BYTE *buf)
@@ -164,16 +165,16 @@ void write_buf_to_file(BYTE *buf)
 	unsigned int previous_sector_offset, sector_offset;
 	WORD free_cluster;
 	// if we have written more than a cluster's worth of sectors, allocate a new cluster and link it into the FAT
-	if (num_sectors_used_in_cluster == 32)
+	if (num_sectors_used_in_cluster == sectors_per_cluster)
 	{
 		free_cluster = find_free_cluster();
 		fat_cluster_entries[free_cluster%256] = 0xffff;
-		// this is the easy case where since the cluster is the same for both FAT entries, we can modify them in one shot
+		// this is the easy case where the cluster is the same for both FAT entries, we can modify them in one shot
 		// and write back the whole sector 
 		previous_sector_offset = SECTOR_FOR_CLUSTER(previous_cluster);
 		sector_offset = SECTOR_FOR_CLUSTER(free_cluster);
 
-		// this is the easy case where since the cluster is the same for both FAT entries, we can modify them in one shot and write back the whole sector 
+
 		if (sector_offset == previous_sector_offset) {
 			fat_cluster_entries[previous_cluster%256] = free_cluster; 
 			write_sector(sector_offset, (BYTE*) fat_cluster_entries);
@@ -226,7 +227,7 @@ void init_fat16()
 	if (b->signature != 0xaa55) {
 		ERROR();
 	}
- 	if (b->sectors_per_cluster != 32)
+ 	if (b->sectors_per_cluster > 128)
 	{
 		ERROR();
 	}
@@ -244,6 +245,8 @@ void init_fat16()
 	max_root_entries = b->max_root_entries;
 	reserved_sectors = b->reserved_sectors;
 	sectors_per_fat = b->sectors_per_fat;
+	sectors_per_cluster = b->sectors_per_cluster;
+
 	// at this point, the boot record isn't needed any more either
 
 	// compute some offsets of various important sections of this partiton
